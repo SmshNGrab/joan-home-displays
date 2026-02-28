@@ -1,0 +1,5 @@
+{
+  "MasterHost": "127.0.0.1",
+  "MasterPort": 32990,
+  "GatewayPort": 11113
+}

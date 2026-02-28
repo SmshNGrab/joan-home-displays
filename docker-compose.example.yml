@@ -1,0 +1,103 @@
+version: "3.8"
+
+# ── Joan E-Ink Display Network — Docker Compose ────────────
+#
+# Copy .env.example to .env and fill in your values before running.
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f [service-name]
+# Restart: docker compose restart [service-name]
+
+services:
+
+  # ── Visionect Server (VSS) ─────────────────────────────
+  # Manages all Joan e-ink devices, renders HTML, pushes images to devices.
+  visionect-server:
+    image: visionect/visionect-server:latest
+    container_name: visionect-server
+    restart: unless-stopped
+    ports:
+      - "8081:8081"     # VSS admin web panel + API
+      - "11113:11113"   # Device connection port (devices connect here)
+    volumes:
+      - visionect-data:/data
+      - ./vss-config.json:/opt/visionect/vss/config.json
+      - ./vss-config.json:/opt/visionect/vss/config/config.json
+    depends_on:
+      - visionect-db
+      - visionect-redis
+    environment:
+      - VSS_DB_HOST=visionect-db
+      - VSS_REDIS_HOST=visionect-redis
+
+  # ── PostgreSQL database for VSS ────────────────────────
+  visionect-db:
+    image: postgres:12
+    container_name: visionect-db
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=visionect
+      - POSTGRES_PASSWORD=visionect
+      - POSTGRES_DB=visionect
+
+  # ── Redis cache for VSS ────────────────────────────────
+  visionect-redis:
+    image: redis:6-alpine
+    container_name: visionect-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  # ── Static file server (serves HTML display pages) ────
+  # Your .html files go in ${WWW_PATH} on the host.
+  # Devices fetch their content from http://YOUR_SERVER_IP:${WWW_PORT}/page.html
+  ha-static:
+    image: nginx:alpine
+    container_name: ha-static
+    restart: unless-stopped
+    ports:
+      - "${WWW_PORT:-8124}:80"
+    volumes:
+      - ${WWW_PATH:-./www}:/usr/share/nginx/html:ro
+
+  # ── Home Assistant (optional) ─────────────────────────
+  # Remove this section if you don't want HA.
+  # If kept, access at http://YOUR_SERVER_IP:8123
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    volumes:
+      - ha-config:/config
+      - /etc/localtime:/etc/localtime:ro
+
+  # ── Pi-hole (optional) ────────────────────────────────
+  # Remove this section if you don't want Pi-hole.
+  # If kept, set your router's DNS to YOUR_SERVER_IP.
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    restart: unless-stopped
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "80:80/tcp"
+    volumes:
+      - pihole-etc:/etc/pihole
+      - pihole-dnsmasq:/etc/dnsmasq.d
+    environment:
+      - WEBPASSWORD=${PIHOLE_PASSWORD:-changeme}
+      - TZ=America/Chicago  # Change to your timezone
+
+volumes:
+  visionect-data:
+  postgres-data:
+  redis-data:
+  ha-config:
+  pihole-etc:
+  pihole-dnsmasq:

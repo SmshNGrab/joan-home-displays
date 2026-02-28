@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Hangman</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1024px; height: 758px;
+    overflow: hidden;
+    background: white; color: black;
+    font-family: 'Courier New', monospace;
+    user-select: none;
+  }
+
+  #header {
+    text-align: center;
+    font-size: 26px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    border-bottom: 2px solid black;
+    padding: 8px 0;
+  }
+
+  #game-area {
+    display: flex;
+    height: 580px;
+  }
+
+  /* Left: gallows */
+  #gallows-area {
+    width: 340px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid #ccc;
+  }
+
+  /* Right: word + keyboard */
+  #right-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+    padding: 10px 20px;
+  }
+
+  #wrong-count {
+    font-size: 20px;
+    color: #555;
+    letter-spacing: 2px;
+  }
+
+  #word-display {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .letter-slot {
+    font-size: 52px;
+    font-weight: bold;
+    border-bottom: 4px solid black;
+    width: 44px;
+    text-align: center;
+    line-height: 1.1;
+  }
+
+  #keyboard {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 6px;
+    width: 100%;
+    max-width: 620px;
+  }
+
+  .key-btn {
+    font-size: 28px;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    padding: 12px 0;
+    border: 2px solid black;
+    background: white;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .key-btn.used-correct { background: #000; color: white; }
+  .key-btn.used-wrong   { background: #ccc; color: #888; text-decoration: line-through; }
+
+  #message-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1024px; height: 758px;
+    background: rgba(255,255,255,0.96);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+
+  #message-title {
+    font-size: 80px;
+    font-weight: bold;
+    letter-spacing: 4px;
+  }
+
+  #message-word {
+    font-size: 40px;
+    letter-spacing: 6px;
+    font-weight: bold;
+  }
+
+  #message-hint {
+    font-size: 26px;
+    color: #555;
+  }
+
+  #footer {
+    text-align: center;
+    font-size: 18px;
+    color: #aaa;
+    border-top: 1px solid #ddd;
+    padding: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="header">Hangman</div>
+
+<div id="game-area">
+  <div id="gallows-area">
+    <canvas id="gallows" width="300" height="540"></canvas>
+  </div>
+
+  <div id="right-area">
+    <div id="wrong-count"></div>
+    <div id="word-display"></div>
+    <div id="keyboard"></div>
+  </div>
+</div>
+
+<div id="footer">Tap a letter to guess</div>
+
+<div id="message-overlay">
+  <div id="message-title"></div>
+  <div id="message-word"></div>
+  <div id="message-hint">New game in <span id="countdown">10</span> seconds</div>
+</div>
+
+<script>
+// ── WORD LIST — add your own words ─────────────────────────
+// Words are automatically uppercased. Keep them 3–12 letters.
+const WORDS = [
+  // General vocabulary
+  "APPLE","BRAVE","CLOUD","DREAM","EAGLE","FLAME","GRACE","HEART","IMAGE","JUICE",
+  "KNIFE","LEMON","MAGIC","NOBLE","OCEAN","PIANO","QUEEN","RIVER","STONE","TIGER",
+  "UNCLE","VIVID","WHEAT","EXTRA","YACHT","ZEBRA","BREAD","CLOTH","DANCE","EARLY",
+  "FAINT","GIANT","HAPPY","INDEX","JOKER","KNEEL","LUNAR","MEDAL","NIGHT","ORBIT",
+  "PLANT","QUIET","RADAR","SMILE","TRACK","UNDER","VAPOR","WALTZ","XENON","YOUNG",
+  "ABOVE","BLANK","CHESS","DUSTY","ENJOY","FROST","GRAPE","HINGE","INBOX","JAZZY",
+  "KAYAK","LAYER","MAYOR","NERVE","OLIVE","PORCH","QUEST","RIDGE","SHELF","THINK",
+  "UNION","VISIT","WORLD","XEROX","YIELD","ZONES","ARMOR","BLOOD","CABIN","DRILL",
+  "ENTER","FIRST","GLASS","HOTEL","IDEAL","JEWEL","KINGS","LIGHT","MUSIC","NORTH",
+  "OFTEN","POWER","QUERY","ROUND","SPEED","TREND","URBAN","VOICE","WATER","YEAST",
+  // Bible names & places
+  "ADAM","NOAH","RUTH","ABEL","CAIN","ESAU","LEVI","BOAZ","EZRA","ANNA",
+  "MOSES","AARON","DAVID","SARAH","JACOB","ISAAC","JONAH","MICAH","NAOMI","RAHAB",
+  "JOSEPH","ELIJAH","ELISHA","ESTHER","SAMSON","DANIEL","JOSHUA","GIDEON","MARTHA","THOMAS",
+  "SOLOMON","MATTHEW","STEPHEN","BARNABAS","DEBORAH","JEZEBEL","OBADIAH","ABSALOM","JERICHO","BETHLEHEM",
+  "NAZARETH","JERUSALEM","GALILEE","BETHANY","CALVARY","CANAAN","JORDAN","SINAI","EGYPT","ISRAEL",
+  // Household vocabulary
+  "KITCHEN","BEDROOM","BATHROOM","GARDEN","LAUNDRY","PANTRY","GARAGE","HALLWAY","BALCONY","BASEMENT",
+  "BLANKET","PILLOW","CABINET","FAUCET","CURTAIN","LADDER","BROOM","BUCKET","MIRROR","DRAWER",
+  // Nature
+  "MOUNTAIN","WATERFALL","LIGHTNING","RAINBOW","VOLCANO","TORNADO","GLACIER","MEADOW","CANYON","FOREST",
+  "BUTTERFLY","ELEPHANT","DOLPHIN","PENGUIN","GIRAFFE","LEOPARD","FLAMINGO","CROCODILE","HEDGEHOG","SQUIRREL"
+];
+
+const MAX_WRONG = 6;
+const AUTO_RESET_MS = 10000;
+const IDLE_RESET_MS = 300000; // 5 minutes
+
+let word = '';
+let guessed = new Set();
+let wrongCount = 0;
+let gameOver = false;
+let resetTimer = null;
+let idleTimer = null;
+
+function pickWord() {
+  return WORDS[Math.floor(Math.random() * WORDS.length)];
+}
+
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  kb.innerHTML = '';
+  // 3 rows: 9 + 9 + 8 letters
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  alpha.forEach(letter => {
+    const btn = document.createElement('div');
+    btn.className = 'key-btn';
+    btn.id = 'key-' + letter;
+    btn.textContent = letter;
+    btn.onclick = () => guess(letter);
+    kb.appendChild(btn);
+  });
+}
+
+function updateWordDisplay() {
+  const wd = document.getElementById('word-display');
+  wd.innerHTML = '';
+  word.split('').forEach(ch => {
+    const slot = document.createElement('div');
+    slot.className = 'letter-slot';
+    slot.textContent = guessed.has(ch) ? ch : '';
+    wd.appendChild(slot);
+  });
+}
+
+function drawGallows(wrong) {
+  const canvas = document.getElementById('gallows');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 6;
+  ctx.lineCap = 'round';
+
+  function line(x1,y1,x2,y2) {
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  }
+
+  // Gallows frame (always drawn)
+  line(20, 520, 280, 520);  // base
+  line(80, 520, 80, 60);    // pole
+  line(80, 60, 200, 60);    // top bar
+  line(200, 60, 200, 110);  // rope
+
+  // Body parts (drawn progressively)
+  if (wrong >= 1) { // head
+    ctx.beginPath(); ctx.arc(200, 140, 30, 0, Math.PI*2); ctx.stroke();
+  }
+  if (wrong >= 2) line(200, 170, 200, 310); // body
+  if (wrong >= 3) line(200, 200, 140, 270); // left arm
+  if (wrong >= 4) line(200, 200, 260, 270); // right arm
+  if (wrong >= 5) line(200, 310, 150, 420); // left leg
+  if (wrong >= 6) line(200, 310, 250, 420); // right leg
+}
+
+function guess(letter) {
+  if (gameOver || guessed.has(letter)) return;
+  resetIdleTimer();
+
+  guessed.add(letter);
+  const btn = document.getElementById('key-' + letter);
+
+  if (word.includes(letter)) {
+    btn.className = 'key-btn used-correct';
+  } else {
+    wrongCount++;
+    btn.className = 'key-btn used-wrong';
+    drawGallows(wrongCount);
+  }
+
+  document.getElementById('wrong-count').textContent = `Wrong: ${wrongCount} / ${MAX_WRONG}`;
+  updateWordDisplay();
+
+  const allRevealed = word.split('').every(ch => guessed.has(ch));
+  if (allRevealed) endGame(true);
+  else if (wrongCount >= MAX_WRONG) endGame(false);
+}
+
+function endGame(won) {
+  gameOver = true;
+  const overlay = document.getElementById('message-overlay');
+  const title   = document.getElementById('message-title');
+  const wordEl  = document.getElementById('message-word');
+
+  title.textContent = won ? 'You Win!' : 'Game Over';
+  wordEl.textContent = word;
+  overlay.style.display = 'flex';
+
+  let count = Math.floor(AUTO_RESET_MS / 1000);
+  document.getElementById('countdown').textContent = count;
+  resetTimer = setInterval(() => {
+    count--;
+    document.getElementById('countdown').textContent = count;
+    if (count <= 0) { clearInterval(resetTimer); newGame(); }
+  }, 1000);
+}
+
+function newGame() {
+  clearInterval(resetTimer);
+  document.getElementById('message-overlay').style.display = 'none';
+  word = pickWord();
+  guessed = new Set();
+  wrongCount = 0;
+  gameOver = false;
+  drawGallows(0);
+  buildKeyboard();
+  updateWordDisplay();
+  document.getElementById('wrong-count').textContent = `Wrong: 0 / ${MAX_WRONG}`;
+  resetIdleTimer();
+}
+
+function resetIdleTimer() {
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(newGame, IDLE_RESET_MS);
+}
+
+// Tap anywhere on the overlay to start a new game immediately
+document.getElementById('message-overlay').onclick = newGame;
+
+newGame();
+</script>
+</body>
+</html>

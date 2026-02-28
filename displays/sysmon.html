@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>System Monitor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1024px; height: 758px;
+    overflow: hidden;
+    background: white; color: black;
+    font-family: 'Courier New', monospace;
+  }
+
+  #header {
+    text-align: center;
+    font-size: 28px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    border-bottom: 3px solid black;
+    padding: 12px 0;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+    gap: 0;
+    height: 680px;
+  }
+
+  .panel {
+    border: 1px solid #ccc;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .panel-title {
+    font-size: 18px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+  }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 26px;
+    padding: 2px 0;
+  }
+
+  .stat-label { color: #555; }
+  .stat-value { font-weight: bold; }
+
+  .stat-value.warn  { color: #333; font-style: italic; }
+  .stat-value.good  { color: #000; }
+
+  #footer {
+    text-align: center;
+    font-size: 16px;
+    color: #888;
+    padding: 6px;
+    border-top: 1px solid #ddd;
+  }
+
+  .container-row {
+    font-size: 22px;
+    display: flex;
+    justify-content: space-between;
+    padding: 1px 0;
+  }
+
+  .status-up   { font-weight: bold; }
+  .status-down { font-weight: bold; color: #666; }
+</style>
+</head>
+<body>
+
+<div id="header">System Monitor</div>
+
+<div id="grid">
+  <!-- Panel 1: Pi-hole DNS -->
+  <div class="panel">
+    <div class="panel-title">Pi-hole DNS</div>
+    <div class="stat-row">
+      <span class="stat-label">Queries Today</span>
+      <span class="stat-value" id="dns-queries">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Blocked</span>
+      <span class="stat-value" id="dns-blocked">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Block Rate</span>
+      <span class="stat-value" id="dns-pct">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Block List</span>
+      <span class="stat-value" id="dns-domains">--</span>
+    </div>
+  </div>
+
+  <!-- Panel 2: Docker Containers -->
+  <div class="panel">
+    <div class="panel-title">Services</div>
+    <div id="containers"></div>
+  </div>
+
+  <!-- Panel 3: Server Health -->
+  <div class="panel">
+    <div class="panel-title">Server Health</div>
+    <div class="stat-row">
+      <span class="stat-label">CPU</span>
+      <span class="stat-value" id="cpu">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Memory</span>
+      <span class="stat-value" id="mem">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Disk</span>
+      <span class="stat-value" id="disk">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Uptime</span>
+      <span class="stat-value" id="uptime">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Load</span>
+      <span class="stat-value" id="load">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Temp</span>
+      <span class="stat-value" id="temp">--</span>
+    </div>
+  </div>
+
+  <!-- Panel 4: DNS Breakdown -->
+  <div class="panel">
+    <div class="panel-title">DNS Breakdown</div>
+    <div class="stat-row">
+      <span class="stat-label">Forwarded</span>
+      <span class="stat-value" id="dns-forwarded">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Cached</span>
+      <span class="stat-value" id="dns-cached">--</span>
+    </div>
+    <div class="stat-row">
+      <span class="stat-label">Clients</span>
+      <span class="stat-value" id="dns-clients">--</span>
+    </div>
+    <div class="stat-row" style="margin-top:10px; border-top:1px solid #eee; padding-top:10px;">
+      <span class="stat-label">Updated</span>
+      <span class="stat-value" id="last-update" style="font-size:20px;">--</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── CONFIGURATION ──────────────────────────────────────────
+// Path to the sysmon.json data file (relative URL)
+const DATA_URL = 'sysmon.json';
+// Refresh interval in seconds
+const REFRESH_SECONDS = 300;
+// ──────────────────────────────────────────────────────────
+
+function fmt(n) {
+  if (n === undefined || n === null) return '--';
+  if (n >= 1000000) return (n/1000000).toFixed(1) + 'M';
+  if (n >= 1000)    return (n/1000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function load() {
+  fetch(DATA_URL + '?t=' + Date.now())
+    .then(r => r.json())
+    .then(d => render(d))
+    .catch(() => {
+      document.getElementById('last-update').textContent = 'Load error';
+    });
+}
+
+function render(d) {
+  // Pi-hole
+  const ph = d.pihole || {};
+  document.getElementById('dns-queries').textContent  = fmt(ph.queries_today);
+  document.getElementById('dns-blocked').textContent  = fmt(ph.ads_blocked_today);
+  document.getElementById('dns-pct').textContent      = ph.ads_percentage_today != null
+    ? ph.ads_percentage_today.toFixed(1) + '%' : '--';
+  document.getElementById('dns-domains').textContent  = fmt(ph.domains_being_blocked);
+  document.getElementById('dns-forwarded').textContent = fmt(ph.queries_forwarded);
+  document.getElementById('dns-cached').textContent    = fmt(ph.queries_cached);
+  document.getElementById('dns-clients').textContent   = fmt(ph.unique_clients);
+
+  // Server
+  const sv = d.server || {};
+  document.getElementById('cpu').textContent    = sv.cpu_pct    != null ? sv.cpu_pct.toFixed(1) + '%' : '--';
+  document.getElementById('mem').textContent    = sv.mem_pct    != null ? sv.mem_pct.toFixed(1) + '%' : '--';
+  document.getElementById('disk').textContent   = sv.disk_pct   != null ? sv.disk_pct.toFixed(0) + '%' : '--';
+  document.getElementById('uptime').textContent = sv.uptime_str || '--';
+  document.getElementById('load').textContent   = sv.load_1     != null ? sv.load_1.toFixed(2) : '--';
+  document.getElementById('temp').textContent   = sv.temp_c     != null ? sv.temp_c.toFixed(1) + 'C' : '--';
+
+  // Containers
+  const containers = d.containers || [];
+  const el = document.getElementById('containers');
+  el.innerHTML = '';
+  containers.forEach(c => {
+    const row = document.createElement('div');
+    row.className = 'container-row';
+    const nameSpan   = document.createElement('span');
+    const statusSpan = document.createElement('span');
+    nameSpan.textContent   = c.name;
+    statusSpan.textContent = c.status;
+    statusSpan.className   = c.running ? 'status-up' : 'status-down';
+    row.appendChild(nameSpan);
+    row.appendChild(statusSpan);
+    el.appendChild(row);
+  });
+
+  // Timestamp
+  document.getElementById('last-update').textContent = d.updated || '--';
+}
+
+load();
+setInterval(load, REFRESH_SECONDS * 1000);
+</script>
+</body>
+</html>

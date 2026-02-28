@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Scripture of the Day</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1024px; height: 758px;
+    overflow: hidden;
+    background: white; color: black;
+    font-family: Georgia, 'Times New Roman', serif;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+  }
+
+  #header {
+    font-size: 28px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 2px solid black;
+    padding-bottom: 10px;
+    margin-bottom: 30px;
+    width: 90%;
+    text-align: center;
+  }
+
+  #verse-text {
+    font-size: 38px;
+    line-height: 1.5;
+    text-align: center;
+    padding: 0 60px;
+    max-height: 480px;
+    overflow: hidden;
+  }
+
+  #reference {
+    font-size: 26px;
+    margin-top: 28px;
+    font-style: italic;
+    letter-spacing: 1px;
+  }
+
+  /* Good Morning / Good Night overlay modes */
+  #mode-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 1024px; height: 758px;
+    background: white;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    display: none;
+  }
+
+  #mode-title {
+    font-size: 72px;
+    font-weight: bold;
+    letter-spacing: 4px;
+  }
+
+  #mode-time {
+    font-size: 48px;
+    margin-top: 20px;
+    letter-spacing: 2px;
+  }
+
+  #footer {
+    position: absolute;
+    bottom: 12px;
+    font-size: 18px;
+    color: #666;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+
+<div id="mode-overlay">
+  <div id="mode-title"></div>
+  <div id="mode-time"></div>
+</div>
+
+<div id="header">Scripture of the Day</div>
+<div id="verse-text">Loading...</div>
+<div id="reference"></div>
+<div id="footer" id="date-footer"></div>
+
+<script>
+// ── CONFIGURATION ──────────────────────────────────────────
+// Timezone offset from UTC (e.g. CST = -6, EST = -5, PST = -8)
+const UTC_OFFSET_HOURS = -6;
+// How many verse slots per day (scripture changes at each boundary)
+const SLOTS_PER_DAY = 3; // changes at 6am, 12pm, 6pm local time
+// ──────────────────────────────────────────────────────────
+
+// 60 verses — add or remove as you like
+const VERSES = [
+  "John 3:16", "Psalm 23:1", "Romans 8:28", "Philippians 4:13",
+  "Jeremiah 29:11", "Proverbs 3:5", "Isaiah 40:31", "Matthew 11:28",
+  "Romans 8:38-39", "Psalm 46:1", "Joshua 1:9", "2 Timothy 1:7",
+  "Matthew 6:33", "1 Corinthians 13:4", "Psalm 27:1", "Ephesians 2:8",
+  "Hebrews 11:1", "Romans 12:2", "Galatians 5:22-23", "James 1:2-4",
+  "Psalm 119:105", "Matthew 5:9", "John 14:6", "Romans 6:23",
+  "Colossians 3:23", "Proverbs 22:6", "1 Peter 5:7", "Philippians 4:6-7",
+  "Genesis 1:1", "Revelation 21:4", "Matthew 22:37-39", "Luke 6:31",
+  "Psalm 121:1-2", "Isaiah 41:10", "John 15:13", "Acts 1:8",
+  "Romans 15:13", "Ephesians 6:10-11", "Lamentations 3:22-23", "Micah 6:8",
+  "Hebrews 4:16", "1 John 4:19", "Psalm 37:4", "Proverbs 31:25",
+  "2 Corinthians 5:17", "Deuteronomy 31:6", "Matthew 28:19-20", "John 1:1",
+  "Romans 5:8", "Isaiah 43:2", "1 Timothy 4:12", "Colossians 1:16-17",
+  "Psalm 34:18", "Nehemiah 8:10", "Zechariah 4:6", "Galatians 2:20",
+  "Ephesians 3:20", "Psalm 91:1-2", "2 Chronicles 7:14", "John 10:10"
+];
+
+function getLocalNow() {
+  const now = new Date();
+  return new Date(now.getTime() + (UTC_OFFSET_HOURS * 60 * 60 * 1000));
+}
+
+function getSlot() {
+  const local = getLocalNow();
+  const dayOfYear = Math.floor(local.getTime() / 86400000);
+  const hour = local.getUTCHours();
+  const slotInDay = Math.floor(hour / (24 / SLOTS_PER_DAY));
+  return dayOfYear * SLOTS_PER_DAY + slotInDay;
+}
+
+function getVerseForSlot(slot) {
+  const idx = Math.abs(Math.floor(Math.sin(slot * 13.7 + 1) * 10000)) % VERSES.length;
+  return VERSES[idx];
+}
+
+function checkMode() {
+  const local = getLocalNow();
+  const hour = local.getUTCHours();
+  const overlay = document.getElementById('mode-overlay');
+  const title   = document.getElementById('mode-title');
+  const mtime   = document.getElementById('mode-time');
+
+  const timeStr = local.toUTCString().replace('GMT','').match(/(\d+:\d+)/)?.[0] || '';
+
+  if (hour >= 4 && hour < 6) {
+    overlay.style.display = 'flex';
+    title.textContent = 'Good Morning';
+    mtime.textContent = timeStr;
+    return true;
+  }
+  if (hour >= 22 || hour < 4) {
+    overlay.style.display = 'flex';
+    title.textContent = 'Good Night';
+    mtime.textContent = timeStr;
+    return true;
+  }
+  overlay.style.display = 'none';
+  return false;
+}
+
+function updateFooter() {
+  const local = getLocalNow();
+  const days  = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const foot = document.getElementById('footer');
+  if (foot) {
+    foot.textContent = `${days[local.getUTCDay()]}, ${months[local.getUTCMonth()]} ${local.getUTCDate()}`;
+  }
+}
+
+function loadVerse(reference) {
+  const url = `https://bible-api.com/${encodeURIComponent(reference)}?translation=kjv`;
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      let text = data.text || '';
+      text = text.replace(/\s+/g, ' ').trim();
+      // Trim very long passages for display
+      if (text.length > 380) text = text.substring(0, 377) + '...';
+      document.getElementById('verse-text').textContent = '\u201C' + text + '\u201D';
+      document.getElementById('reference').textContent = '\u2014 ' + (data.reference || reference);
+    })
+    .catch(() => {
+      document.getElementById('verse-text').textContent = '\u201CYour word is a lamp to my feet and a light to my path.\u201D';
+      document.getElementById('reference').textContent = '\u2014 Psalm 119:105';
+    });
+}
+
+function init() {
+  updateFooter();
+  if (!checkMode()) {
+    const slot    = getSlot();
+    const verse   = getVerseForSlot(slot);
+    loadVerse(verse);
+  }
+
+  // Schedule reload at the next slot boundary
+  const local = getLocalNow();
+  const slotHours = 24 / SLOTS_PER_DAY;
+  const currentSlotHour = Math.floor(local.getUTCHours() / slotHours) * slotHours;
+  const nextSlotMs = ((slotHours - (local.getUTCHours() - currentSlotHour)) * 3600
+                      - local.getUTCMinutes() * 60
+                      - local.getUTCSeconds()) * 1000 + 5000;
+  setTimeout(() => location.reload(), nextSlotMs);
+}
+
+init();
+</script>
+</body>
+</html>
